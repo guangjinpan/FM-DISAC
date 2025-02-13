@@ -1,0 +1,88 @@
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ExponentialLR
+
+import argparse
+import pytorch_lightning as pl
+from pytorch_lightning import LightningModule, Trainer
+from torch.utils.data import ConcatDataset
+from torch.utils.data import DataLoader, ConcatDataset, random_split
+from pytorch_lightning.callbacks import ModelCheckpoint
+import math
+import torch
+import math
+import os
+import numpy as np
+from scipy.spatial.distance import cdist
+import random
+from fm_models import *
+
+
+class Wrapper(pl.LightningModule):
+    def __init__(self, task = "no_pretrain"):
+        super().__init__()
+
+        self.model = ASTModel(
+            fshape=16, tshape=16, fstride=16, tstride=16,
+            input_fdim=256, input_tdim=input_tdim, model_size='small',
+            pretrain_stage=True)
+        self.task = task
+
+    def forward(self, x, y):
+
+        if self.task == "no_pretrain":
+            loss = ast_mdl(x, y, task='no_pretrain')
+
+        elif self.tast == "pretrain":
+            mse_loss = ast_mdl(x, y, task='pretrain_mpg', mask_patch=100)
+
+
+        return loss
+    
+
+    def training_step(self, batch, batch_idx):
+        x, labels = batch
+
+        loss = self.forward(x, labels)
+
+        self.train_epoch_loss.append(loss.detach())
+        self.log('train/loss', loss, prog_bar=True, sync_dist=True, on_step=False, on_epoch=True)
+        return {'loss': loss}
+
+    def on_train_epoch_end(self):
+        # 计算平均 loss
+        avg_loss = torch.stack(self.train_epoch_loss).mean()
+        print(f"Epoch {self.current_epoch} - Average Training Loss: {avg_loss.item()}")
+        # 清空 loss 列表，为下一轮训练准备
+        self.train_epoch_loss.clear()
+    
+    
+    def validation_step(self, batch, batch_idx):
+        x, labels = batch
+
+        loss = self.forward(x, labels)
+
+        self.valepoch_loss.append(loss.detach())
+        self.log('val/loss', loss, prog_bar=True, sync_dist=True, on_step=False, on_epoch=True)
+
+
+    def on_validation_epoch_end(self):
+        # 计算平均 loss
+        avg_loss = torch.stack(self.valepoch_loss).mean()
+        print(f"Epoch {self.current_epoch} - Average Validation Loss: {avg_loss.item()}")
+        # 清空 loss 列表，为下一轮训练准备
+        self.valepoch_loss.clear()
+
+    def configure_optimizers(self):
+        self.optim = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=2e-5)
+        # self.schedule = torch.optim.lr_scheduler.CosineAnnealingLR(self.optim, T_max=3000, eta_min=0)
+        self.schedule = torch.optim.lr_scheduler.OneCycleLR(self.optim, max_lr=1e-3, total_steps=15625000, pct_start=0.1, final_div_factor=1e2)
+        # self.schedule = torch.optim.lr_scheduler.OneCycleLR(self.optim, max_lr=1e-3, total_steps=782*1000, pct_start=0.4, final_div_factor=1e1)
+
+        return {
+            'optimizer': self.optim, 
+            # 'lr_scheduler': {'scheduler': self.schedule, 'interval': 'step'}
+        }
