@@ -25,19 +25,22 @@ class Wrapper(pl.LightningModule):
     def __init__(self, task = "no_pretrain"):
         super().__init__()
 
-        self.model = ASTModel(
-            fshape=16, tshape=16, fstride=16, tstride=16,
-            input_fdim=256, input_tdim=input_tdim, model_size='small',
-            pretrain_stage=True)
+        self.channel_fdmdl = ASTModel(
+                 fshape=4, tshape=4, fstride=4, tstride=4,
+                 input_fdim=64, input_tdim=32, input_fmap = 2, model_size='tiny',
+                 pretrain_stage=True)
         self.task = task
+        self.train_epoch_loss = [] 
+        self.valepoch_loss = []
+
 
     def forward(self, x, y):
 
         if self.task == "no_pretrain":
-            loss = ast_mdl(x, y, task='no_pretrain')
+            loss = self.channel_fdmdl(x, y, task='no_pretrain')
 
         elif self.tast == "pretrain":
-            mse_loss = ast_mdl(x, y, task='pretrain_mpg', mask_patch=100)
+            mse_loss = channel_fdmdl(x, y, task='pretrain_mpg', mask_patch=100)
 
 
         return loss
@@ -45,6 +48,7 @@ class Wrapper(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, labels = batch
+        x = x.float()
 
         loss = self.forward(x, labels)
 
@@ -62,6 +66,7 @@ class Wrapper(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         x, labels = batch
+        x = x.float()
 
         loss = self.forward(x, labels)
 

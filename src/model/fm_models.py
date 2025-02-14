@@ -2,8 +2,6 @@ import torch.nn as nn
 import torch
 import sys
 
-sys.path.append("/data/sls/scratch/yuangong/aed-trans/src/models/")
-sys.path.append("/data/sls/scratch/yuangong/aed-trans/src/")
 sys.path.append("../../../pytorch-image-models")
 from timm.models.layers import trunc_normal_
 import timm
@@ -66,12 +64,12 @@ class ASTModel(nn.Module):
 
             # if AudioSet pretraining is not used (but ImageNet pretraining may still apply)
             if model_size == 'tiny':
-                self.v = timm.create_model('vit_deit_tiny_distilled_patch16_224', pretrained=False)
+                self.v = timm.create_model('vit_tiny_patch16_224', pretrained=False)
                 self.heads, self.depth = 3, 12
                 self.cls_token_num = 1
             elif model_size == 'small':
                 self.v = timm.create_model('vit_small_patch16_36x1_224', pretrained=False)
-                self.heads, self.depth = 6, 12
+                self.heads, self.v.depth = 4, 4
                 self.cls_token_num = 1
             elif model_size == 'base':
                 self.v = timm.create_model('vit_deit_base_distilled_patch16_384', pretrained=False)
@@ -113,6 +111,7 @@ class ASTModel(nn.Module):
             self.mask_embed = torch.nn.init.xavier_normal_(self.mask_embed)
 
             # get the intermediate shape
+            print(fstride, tstride, input_fdim, input_tdim, fshape, tshape)
             self.p_f_dim, self.p_t_dim = self.get_shape(fstride, tstride, input_fdim, input_tdim, fshape, tshape)
             num_patches = self.p_f_dim * self.p_t_dim
             self.num_patches = num_patches
@@ -174,6 +173,7 @@ class ASTModel(nn.Module):
 
     def mpg(self, input, mask_patch, cluster):
         B = input.shape[0]
+        # print(self.v)
         x = self.v.patch_embed(input)
         input = self.unfold(input).transpose(1, 2)
 
@@ -228,7 +228,7 @@ class ASTModel(nn.Module):
         # x = x.unsqueeze(1)
 
         x = x.transpose(2, 3)
-        print(11,x.shape)
+        # print(11,x.shape)
         # finetuning (ft), use the mean of all token (patch) output as clip-level representation.
         # this is default for SSAST fine-tuning as during pretraining, supervision signal is given to each token, not the [cls] token
         # if task == 'ft_avgtok':
@@ -258,7 +258,7 @@ if __name__ == '__main__':
     input_tdim = 1024
     input_fdim = 256
     input_fmap = 2
-    print(timm.list_models("*vit*small*"))  # 模糊匹配特定模型
+    print(timm.list_models("*vit*tiny*"))  # 模糊匹配特定模型
 
     # create a 16*16 patch based AST model for pretraining.
     # note, we don't use patch split overlap in pretraining, so fstride=fshape and tstride=tshape
@@ -266,6 +266,7 @@ if __name__ == '__main__':
                  fshape=16, tshape=16, fstride=16, tstride=16,
                  input_fdim=256, input_tdim=input_tdim, input_fmap = input_fmap, model_size='small',
                  pretrain_stage=True)
+    print(ASTModel)
     # # alternatively, create a frame based AST model
     # ast_mdl = ASTModel(
     #              fshape=128, tshape=2, fstride=128, tstride=2,
