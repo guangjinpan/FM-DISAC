@@ -22,25 +22,37 @@ from torch.utils.data import ConcatDataset
 from torch.utils.data import DataLoader, ConcatDataset, random_split, Dataset
 from pytorch_lightning.callbacks import ModelCheckpoint
 
+
+#1-488699
 EnvPara = {}  
-EnvPara["epochs"]  = 3
+EnvPara["epochs"]  = 100
+EnvPara["data_len"] = 10000#100000
+EnvPara["input_tdim"]  = 32
+EnvPara["input_fdim"]  = 64
+EnvPara["input_fmap"]  = 2
+EnvPara["fshape"]  = 4
+EnvPara["tshape"]  = 4
+EnvPara["fstride"]  = 4
+EnvPara["tstride"]  = 4
+EnvPara["model_size"]  = 'tiny'
+EnvPara["task"]  = "woFT_SingleBSLoc" # "woFT_SingleBSLoc" # pretrain_mpg
+EnvPara["model_path"]  = '../../pretrained_model/woFT_SingleBSLoc/10000' #'../../pretrained_model/pretrain_mpg'
+EnvPara["pretrain_stage"]  = True
+EnvPara["device"]  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-    
 if __name__ == '__main__':   
-    input_tdim = 1024
-    input_fdim = 256
-    input_fmap = 2
-    FMmodel = Wrapper()
 
-    train_dataset = generate_Dataset(input_fmap, input_tdim, input_fdim)
-    train_dataloader = DataLoader(train_dataset, batch_size = 64, num_workers = 8, shuffle = True, drop_last = False, pin_memory=True)
-    val_dataset = generate_Dataset(input_fmap, input_tdim, input_fdim)
-    val_dataloader = DataLoader(val_dataset, batch_size = 64, num_workers = 8, shuffle = True, drop_last = False, pin_memory=True)
+    FMmodel = Wrapper(EnvPara)
+
+    train_dataset = generate_Dataset(EnvPara)
+    train_dataloader = DataLoader(train_dataset, batch_size = 32, num_workers = 8, shuffle = True, drop_last = False, pin_memory=True)
+    val_dataset = generate_Dataset(EnvPara)
+    val_dataloader = DataLoader(val_dataset, batch_size = 32, num_workers = 8, shuffle = True, drop_last = False, pin_memory=True)
                 
     model_path="test"
     model_checkpoint = ModelCheckpoint(
-        dirpath="../../pretrained_model/model/",
+        dirpath=EnvPara["model_path"],
         filename=model_path+'{epoch:02d}',
         save_top_k=1,  # 仅保存最好的模型
         monitor="val/loss",  # 根据验证集损失选择最好的模型
@@ -48,7 +60,7 @@ if __name__ == '__main__':
     )
 
     latest_model_checkpoint = ModelCheckpoint(
-        dirpath="../../pretrained_model/model/",
+        dirpath=EnvPara["model_path"],
         filename=model_path+'_latest',
         save_top_k=1,  # 只保留最新的模型
         save_last=True,  # 总是保存最新的模型

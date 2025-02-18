@@ -47,7 +47,7 @@ class ASTModel(nn.Module):
     def __init__(self, label_dim=567,
                  fshape=128, tshape=2, fstride=128, tstride=2,
                  input_fdim=128, input_tdim=1024, input_fmap=1, model_size='base',
-                 pretrain_stage=True, load_pretrained_mdl_path=None):
+                 pretrain_stage=True, load_pretrained_mdl_path=None, device = "cpu"):
 
         super(ASTModel, self).__init__()
         # assert timm.__version__ == '0.4.5', 'Please use timm == 0.4.5, the code might not be compatible with newer versions.'
@@ -64,7 +64,7 @@ class ASTModel(nn.Module):
 
             # if AudioSet pretraining is not used (but ImageNet pretraining may still apply)
             if model_size == 'tiny':
-                self.v = timm.create_model('vit_tiny_patch16_224', pretrained=False)
+                self.v = timm.create_model('vit_tiny_patch16_224', pretrained=False).to(device)
                 self.heads, self.depth = 3, 12
                 self.cls_token_num = 1
             elif model_size == 'small':
@@ -81,7 +81,6 @@ class ASTModel(nn.Module):
                 self.cls_token_num = 1
             else:
                 raise Exception('Model size must be one of tiny, small, base, base_nokd')
-
             self.original_num_patches = self.v.patch_embed.num_patches
             self.oringal_hw = int(self.original_num_patches ** 0.5)
             self.original_embedding_dim = self.v.pos_embed.shape[2]
@@ -99,10 +98,13 @@ class ASTModel(nn.Module):
             # we use two layers for pretext task, but using a single layer has similar performance.
             # we map the output of transformer (768-dim for base models) to 256-dim patch input space, and then dot product with flattened patch input (also 256-dim) to calculate loss.
             # alternatively, you can map the output of transformer to 768-dim patch embedding space, and dot product with patch embedding. Performance-wise they are similar, but map to 256 space is more efficient.
-            self.cpredlayer = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, 512))
+            self.cpredlayer = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, self.fshape * self.tshape * self.input_fmap))
             # masked patch reconstruction (generative objective) layer
-            self.gpredlayer = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, 512))
+            self.gpredlayer = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, self.fshape * self.tshape * self.input_fmap))
             self.positioninglayer = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, 2))
+            
+            self.positioninglayer2 = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, 2))
+
 
             self.unfold = torch.nn.Unfold(kernel_size=(fshape, tshape), stride=(fstride, tstride))
 
@@ -173,7 +175,7 @@ class ASTModel(nn.Module):
 
     def mpg(self, input, mask_patch, cluster):
         B = input.shape[0]
-        # print(self.v)
+        # print(input.shape, self.v.patch_embed)
         x = self.v.patch_embed(input)
         input = self.unfold(input).transpose(1, 2)
 
@@ -204,16 +206,14 @@ class ASTModel(nn.Module):
         for blk in self.v.blocks:
             x = blk(x)
         x = self.v.norm(x)
-
-        pred = torch.empty((B, 2, mask_patch, self.fshape * self.tshape), device=x.device).float()  # e.g. size 12*100*256
-        target = torch.empty((B, 2, mask_patch, self.fshape * self.tshape), device=x.device).float() # e.g. size 12*100*256
-
+        pred = torch.empty((B, self.input_fmap, mask_patch, self.fshape * self.tshape), device=x.device).float()  # e.g. size 12*100*256
+        target = torch.empty((B, self.input_fmap, mask_patch, self.fshape * self.tshape), device=x.device).float() # e.g. size 12*100*256
         for i in range(B):
             #  +2 for indexes because cls and dis token
             pred_i = self.gpredlayer(x[i, mask_index[i] + self.cls_token_num, :])
-            pred[i] = pred_i.reshape((pred_i.shape[0], self.input_fmap, -1)).permute(1, 0, 2)
+            pred[i] = pred_i.reshape((pred_i.shape[0], self.input_fmap, self.fshape * self.tshape)).permute(1, 0, 2)
             target_i = input[i, mask_index[i], :]
-            target[i] = target_i.reshape((pred_i.shape[0], self.input_fmap, -1)).permute(1, 0, 2)
+            target[i] = target_i.reshape((pred_i.shape[0], self.input_fmap, self.fshape * self.tshape)).permute(1, 0, 2)
 
         # calculate the MSE loss
         mse = torch.mean((pred - target) ** 2)
@@ -221,8 +221,50 @@ class ASTModel(nn.Module):
         return mse
 
 
+    def singleBSLoc_wo_pre(self, input, y_position):
+        B = input.shape[0]
+        # print(input.shape, self.v.patch_embed)
+        x = self.v.patch_embed(input)
+        input = self.unfold(input).transpose(1, 2)
 
-    def forward(self, x, y, task, cluster=True, mask_patch=400):
+        # go through the Transformer layers
+        cls_tokens = self.v.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        # dist_token = self.v.dist_token.expand(B, -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = x + self.v.pos_embed
+        x = self.v.pos_drop(x)
+        for blk in self.v.blocks:
+            x = blk(x)
+        x = self.v.norm(x)
+        pred = self.positioninglayer2(x)
+        pred = torch.mean(pred,1)
+        target = y_position
+        # calculate the MSE loss
+        mse = torch.mean((pred - target) ** 2)
+
+        return mse
+
+    def inference_SingleBSLoc(self, input):
+        B = input.shape[0]
+        # print(input.shape, self.v.patch_embed)
+        x = self.v.patch_embed(input)
+        input = self.unfold(input).transpose(1, 2)
+
+        # go through the Transformer layers
+        cls_tokens = self.v.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        # dist_token = self.v.dist_token.expand(B, -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = x + self.v.pos_embed
+        x = self.v.pos_drop(x)
+        for blk in self.v.blocks:
+            x = blk(x)
+        x = self.v.norm(x)
+        pred = self.positioninglayer2(x)
+        pred = torch.mean(pred,1)
+
+        return pred
+
+    def forward(self, x, y_position, task, cluster=True, mask_patch=400):
 
         # expect input x = (batch_size, time_frame_num, frequency_bins), e.g., (12, 1024, 128)
         # x = x.unsqueeze(1)
@@ -231,6 +273,12 @@ class ASTModel(nn.Module):
         # print(11,x.shape)
         # finetuning (ft), use the mean of all token (patch) output as clip-level representation.
         # this is default for SSAST fine-tuning as during pretraining, supervision signal is given to each token, not the [cls] token
+        if task == "woFT_SingleBSLoc":
+            return self.singleBSLoc_wo_pre(x, y_position)
+        elif task == "pretrain_mpg":
+            return self.mpg(x, mask_patch = mask_patch, cluster=cluster)
+        elif task == "inference_SingleBSLoc":
+            return self.inference_SingleBSLoc(x)
         # if task == 'ft_avgtok':
         #     return self.finetuningavgtok(x)
         # # alternatively, use the [cls] token output as clip-level representation.
@@ -247,7 +295,7 @@ class ASTModel(nn.Module):
         # else:
         #     raise Exception('Task unrecognized.')
 
-        return self.mpg(x, mask_patch=mask_patch, cluster=cluster)
+        return 0
 
 
 if __name__ == '__main__':
@@ -255,8 +303,12 @@ if __name__ == '__main__':
 
     # pretraining stage
     # suppose you have an unlabled dataset with avg length of 1024 frames (i.e., 10.24s)
+    input_tdim = 32
+    input_fdim = 64
+    input_fmap = 2
+
     input_tdim = 1024
-    input_fdim = 256
+    input_fdim = 128
     input_fmap = 2
     print(timm.list_models("*vit*tiny*"))  # 模糊匹配特定模型
 
@@ -264,7 +316,7 @@ if __name__ == '__main__':
     # note, we don't use patch split overlap in pretraining, so fstride=fshape and tstride=tshape
     ast_mdl = ASTModel(
                  fshape=16, tshape=16, fstride=16, tstride=16,
-                 input_fdim=256, input_tdim=input_tdim, input_fmap = input_fmap, model_size='small',
+                 input_fdim=128, input_tdim=1024, input_fmap = 2, model_size='tiny',
                  pretrain_stage=True)
     print(ASTModel)
     # # alternatively, create a frame based AST model
@@ -278,6 +330,6 @@ if __name__ == '__main__':
     test_input = torch.zeros([10, input_fmap, input_tdim, input_fdim])
     # mask 100 patches for both discriminative and generative loss
     # acc, nce_loss = ast_mdl(test_input, task='pretrain_mpc', mask_patch=100)
-    mse_loss = ast_mdl(test_input, y=[0,0], task='pretrain_mpg', mask_patch=100)
+    mse_loss = ast_mdl(test_input, y_position=torch.zeros((10,2)), task='singleBSLoc', mask_patch=13)
     print(mse_loss)
     # loss = nce_loss + 10 * mse_loss

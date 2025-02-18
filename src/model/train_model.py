@@ -22,16 +22,21 @@ from fm_models import *
 
 
 class Wrapper(pl.LightningModule):
-    def __init__(self, task = "no_pretrain"):
+    def __init__(self, EnvPara):
         super().__init__()
 
         self.channel_fdmdl = ASTModel(
-                 fshape=4, tshape=4, fstride=4, tstride=4,
-                 input_fdim=64, input_tdim=32, input_fmap = 2, model_size='tiny',
-                 pretrain_stage=True)
-        self.task = task
+                 fshape = EnvPara["fshape"], tshape = EnvPara["tshape"], fstride = EnvPara["fstride"], tstride = EnvPara["tstride"],
+                 input_fdim = EnvPara["input_fdim"], input_tdim = EnvPara["input_tdim"], input_fmap = EnvPara["input_fmap"], model_size = EnvPara["model_size"],
+                 pretrain_stage = EnvPara["pretrain_stage"], device = EnvPara["device"])
+        self.task = EnvPara["task"]
         self.train_epoch_loss = [] 
         self.valepoch_loss = []
+        self.EnvPara = EnvPara
+
+        if self.task == "inference_SingleBSLoc":
+            sd = torch.load(self.EnvPara["load_pretrained_mdl_path"], map_location=self.EnvPara["device"])
+            self.channel_fdmdl.load_state_dict(sd, strict=False)
 
 
     def forward(self, x, y):
@@ -39,9 +44,12 @@ class Wrapper(pl.LightningModule):
         if self.task == "no_pretrain":
             loss = self.channel_fdmdl(x, y, task='no_pretrain')
 
-        elif self.tast == "pretrain":
-            mse_loss = channel_fdmdl(x, y, task='pretrain_mpg', mask_patch=100)
-
+        elif self.task == "pretrain_mpg":
+            loss = self.channel_fdmdl(x, y, task='pretrain_mpg', mask_patch=13)
+        elif self.task == "woFT_SingleBSLoc":
+            loss = self.channel_fdmdl(x, y, task = self.task)
+        elif self.task == "inference_SingleBSLoc":
+            res = self.channel_fdmdl(x, y, task = self.task)
 
         return loss
     
