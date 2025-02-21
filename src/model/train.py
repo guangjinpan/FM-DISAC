@@ -43,12 +43,18 @@ EnvPara["tshape"]  = 4
 EnvPara["fstride"]  = 4
 EnvPara["tstride"]  = 4
 EnvPara["model_size"]  = 'tiny'
-EnvPara["task"]  = "pretrain_antenna" # "woFT_SingleBSLoc" # pretrain_mpg #FT_SingleBSLoc #pretrain_antenna
-EnvPara["model_path"]  = '../../pretrained_model/pretrain_antenna' #'../../pretrained_model/woFT_SingleBSLoc/10000' #'../../pretrained_model/pretrain_mpg'
+EnvPara["task"]  = "pretrain_mpg" # "woFT_SingleBSLoc" # pretrain_mpg #FT_SingleBSLoc #pretrain_antenna
+EnvPara["model_path"]  = '../../pretrained_model/pretrain_mpg' #'../../pretrained_model/woFT_SingleBSLoc/10000' #'../../pretrained_model/pretrain_mpg'
 EnvPara["load_pretrained_mdl_path"] =   '../../pretrained_model/pretrain_mpg/testepoch=50.ckpt'  #'../../pretrained_model/pretrain_mpg/testepoch=99.ckpt' 
 EnvPara["pretrain_stage"]  = True
 EnvPara["device"]  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE" 
+
+EnvPara["embed_dim"] = 256
+EnvPara["depth"] = 4
+EnvPara["latent_dim"] =128
+EnvPara["num_heads"] = 4
+
 if __name__ == '__main__':   
     print(EnvPara)
     set_seed(42)

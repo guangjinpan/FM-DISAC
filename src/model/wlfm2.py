@@ -342,7 +342,7 @@ class wireless_loc_fm(nn.Module):
         x = self.norm(x)
         # 压缩到 latent_dim
         latent = self.proj_to_latent(x)  # (B, N+1, latent_dim)
-        print(latent.shape)
+        # print(latent.shape)
         # ---- (B) Decoder ----
         # 这里 unfold 作为重构目标
         input_unfold = self.unfold(input).transpose(1, 2)  # (B, #patches, patch_size*in_chans)
@@ -448,7 +448,7 @@ class wireless_loc_fm(nn.Module):
         x = x + self.pos_embed[:, : x.shape[1], :]
         x = self.transformer_encoder(x)
         x = self.norm(x)
-        print(x.shape)
+        # print(x.shape)
         # 原先是直接在 embed_dim 上定位，这里保持不变，
         # 如果想用 latent_dim，可以把 x -> proj_to_latent -> MLP
         x_mean = torch.mean(x, dim=1)
@@ -512,7 +512,7 @@ if __name__ == "__main__":
     input_tdim = 32
 
     # 输入形状 [B, 2, 64, 32]
-    test_input = torch.randn([B, input_fmap, input_tdim, input_fdim])
+    test_input = torch.randn([B, input_fmap, input_tdim+4, input_fdim])
 
     model = wireless_loc_fm(
         fshape=4, tshape=4, fstride=4, tstride=4,

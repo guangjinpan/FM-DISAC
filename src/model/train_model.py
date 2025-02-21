@@ -18,17 +18,17 @@ import os
 import numpy as np
 from scipy.spatial.distance import cdist
 import random
-from fm_models import *
+from wlfm2 import *
 
 
 class Wrapper(pl.LightningModule):
     def __init__(self, EnvPara):
         super().__init__()
 
-        self.channel_fdmdl = ASTModel(
-                 fshape = EnvPara["fshape"], tshape = EnvPara["tshape"], fstride = EnvPara["fstride"], tstride = EnvPara["tstride"],
-                 input_fdim = EnvPara["input_fdim"], input_tdim = EnvPara["input_tdim"], input_fmap = EnvPara["input_fmap"], model_size = EnvPara["model_size"],
-                 pretrain_stage = EnvPara["pretrain_stage"], device = EnvPara["device"])
+        self.channel_fdmdl =  wireless_loc_fm(
+                fshape = EnvPara["fshape"], tshape = EnvPara["tshape"], fstride = EnvPara["fstride"], tstride = EnvPara["tstride"],
+                input_fdim = EnvPara["input_fdim"], input_tdim = EnvPara["input_tdim"], input_fmap = EnvPara["input_fmap"], embed_dim=EnvPara["embed_dim"], depth = EnvPara["depth"],
+                num_heads = EnvPara["num_heads"], device = EnvPara["device"], latent_dim = EnvPara["latent_dim"])
         self.task = EnvPara["task"]
         self.train_epoch_loss = [] 
         self.valepoch_loss = []
