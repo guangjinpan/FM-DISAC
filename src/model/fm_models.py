@@ -107,6 +107,9 @@ class ASTModel(nn.Module):
             self.positioninglayer3 = nn.Sequential(nn.Linear(self.original_embedding_dim, self.original_embedding_dim), nn.ReLU(), nn.Linear(self.original_embedding_dim, 2))
 
 
+            self.v.cls_token = nn.Parameter(torch.ones(1, 1, self.original_embedding_dim) * 0.1, requires_grad=False)
+
+
             self.unfold = torch.nn.Unfold(kernel_size=(fshape, tshape), stride=(fstride, tstride))
 
             # we use learnable mask embedding (follow the BEIT paper), but using a fixed mask embedding (e.g., 0) leads to same performance.
@@ -133,11 +136,13 @@ class ASTModel(nn.Module):
             self.v.patch_embed.proj = new_proj
             self.v.patch_embed.img_size = (input_fdim, input_tdim)  # 注意：input_fdim对应高度，input_tdim对应宽度
             self.v.patch_embed.patch_size = (fshape, tshape)
-            print(self.v.patch_embed)
+            print(self.v.cls_token.shape)
 
             # use trainable positional embedding
-            new_pos_embed = nn.Parameter(torch.zeros(1, self.v.patch_embed.num_patches + self.cls_token_num, self.original_embedding_dim))
-            self.v.pos_embed = new_pos_embed
+            # new_pos_embed = nn.Parameter(torch.zeros(1, self.v.patch_embed.num_patches + self.cls_token_num, self.original_embedding_dim))
+            new_pos_embed = get_sinusoid_encoding(self.v.patch_embed.num_patches + self.cls_token_num, self.original_embedding_dim)
+            self.v.pos_embed = torch.nn.Parameter(new_pos_embed, requires_grad=False)
+
             trunc_normal_(self.v.pos_embed, std=.02)
             self.last_loss=0
 

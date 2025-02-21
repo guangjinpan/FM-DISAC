@@ -42,7 +42,7 @@ class generate_Dataset(Dataset):
         self.task = EnvPara["task"]
         if self.task == "woFT_SingleBSLoc":
             self.data_list = np.load("../pre_data/train.npy")
-        if self.task == "FT_SingleBSLoc":
+        elif self.task == "FT_SingleBSLoc":
             self.data_list = np.load("../pre_data/train.npy")
         else:
             self.data_list = np.load("../pre_data/pretrain_data.npy")
