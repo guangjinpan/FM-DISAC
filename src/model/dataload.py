@@ -42,6 +42,8 @@ class generate_Dataset(Dataset):
         self.task = EnvPara["task"]
         if self.task == "woFT_SingleBSLoc":
             self.data_list = np.load("../pre_data/train.npy")
+        if self.task == "FT_SingleBSLoc":
+            self.data_list = np.load("../pre_data/train.npy")
         else:
             self.data_list = np.load("../pre_data/pretrain_data.npy")
 
@@ -52,15 +54,13 @@ class generate_Dataset(Dataset):
         return self.len
     
     def __getitem__(self, idx):
-
-
         while (1):
             random_number = self.data_list[random.randint(0, len(self.data_list)-1)]
-            with h5py.File(datapath[0]+f"/3_{random_number}.h5py", 'r') as f:
-                channel_real = f["channel_real"] [:]
+            with h5py.File(datapath[0]+f"/3_{random_number}.h5py", 'r', swmr=True) as f:
+                channel_real = f["channel_real"][:]
                 channel_imag = f["channel_imag"][:]
                 channel = channel_real+ 1j* channel_imag
-                UElocation = f["UElocation"][:][:2] 
+                UElocation = f["UElocation"][:][:2]
             if np.sum(np.abs(channel) ** 2) >0:
                 break
 
@@ -93,7 +93,7 @@ class generate_Dataset_test(Dataset):
         self.input_fdim = EnvPara["input_fdim"]
         self.task = EnvPara["task"]
         if self.task == "inference_SingleBSLoc":
-            self.data_list = np.load("../pre_data/test.npy")
+            self.data_list = np.load("../pre_data/train.npy")
         else:
             self.data_list = np.load("../pre_data/pretrain_data.npy")
 
@@ -105,11 +105,11 @@ class generate_Dataset_test(Dataset):
     
     def __getitem__(self, idx):
         file_number = self.data_list[idx]
-        with h5py.File(datapath[0]+f"/3_{file_number}.h5py", 'r') as f:
-            channel_real = f["channel_real"] [:]
+        with h5py.File(datapath[0]+f"/3_{file_number}.h5py", 'r', swmr=True) as f:
+            channel_real = f["channel_real"][:]
             channel_imag = f["channel_imag"][:]
             channel = channel_real+ 1j* channel_imag
-            UElocation = f["UElocation"][:][:2] 
+            UElocation = f["UElocation"][:][:2]
         if np.sum(np.abs(channel) ** 2) == 0:
             UElocation[:] = 0
 

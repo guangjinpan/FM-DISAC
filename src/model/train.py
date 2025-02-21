@@ -25,7 +25,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 #1-488699
 EnvPara = {}  
-EnvPara["epochs"]  = 100
+EnvPara["epochs"]  = 1000
 EnvPara["data_len"] = 10000#100000
 EnvPara["input_tdim"]  = 32
 EnvPara["input_fdim"]  = 64
@@ -35,15 +35,22 @@ EnvPara["tshape"]  = 4
 EnvPara["fstride"]  = 4
 EnvPara["tstride"]  = 4
 EnvPara["model_size"]  = 'tiny'
-EnvPara["task"]  = "woFT_SingleBSLoc" # "woFT_SingleBSLoc" # pretrain_mpg
-EnvPara["model_path"]  = '../../pretrained_model/woFT_SingleBSLoc/10000' #'../../pretrained_model/pretrain_mpg'
+EnvPara["task"]  = "FT_SingleBSLoc" # "woFT_SingleBSLoc" # pretrain_mpg #FT_SingleBSLoc #pretrain_antenna
+EnvPara["model_path"]  = '../../pretrained_model/FT_SingleBSLoc/mpg/' #'../../pretrained_model/woFT_SingleBSLoc/10000' #'../../pretrained_model/pretrain_mpg'
+EnvPara["load_pretrained_mdl_path"] =   '../../pretrained_model/pretrain_mpg/testepoch=50.ckpt'  #'../../pretrained_model/pretrain_mpg/testepoch=99.ckpt' 
 EnvPara["pretrain_stage"]  = True
 EnvPara["device"]  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE" 
 if __name__ == '__main__':   
+    print(EnvPara)
 
-    FMmodel = Wrapper(EnvPara)
+    FMmodel= Wrapper(EnvPara=EnvPara)
+
+    if EnvPara["task"] == "FT_SingleBSLoc":
+        FMmodel= Wrapper.load_from_checkpoint(EnvPara["load_pretrained_mdl_path"], EnvPara=EnvPara, strict=False)
+    
+    FMmodel.to(EnvPara["device"])
+
 
     train_dataset = generate_Dataset(EnvPara)
     train_dataloader = DataLoader(train_dataset, batch_size = 32, num_workers = 8, shuffle = True, drop_last = False, pin_memory=True)
@@ -67,13 +74,15 @@ if __name__ == '__main__':
         every_n_epochs=5,  # 每个 epoch 保存一次
     )
 
+    logger = pl.loggers.TensorBoardLogger('./logs', name=EnvPara["task"])
     trainer = Trainer(
         log_every_n_steps=0,  # 不记录 step 级日志
         enable_progress_bar=False,
         devices=1,
         accelerator='gpu',
-        # logger=logger,
+        logger=logger,
         max_epochs=EnvPara["epochs"],
-        callbacks=[model_checkpoint, latest_model_checkpoint]
+        callbacks=[model_checkpoint, latest_model_checkpoint],
+        gradient_clip_val=1.0
     )
     trainer.fit(FMmodel, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)

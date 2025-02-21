@@ -34,22 +34,22 @@ class Wrapper(pl.LightningModule):
         self.valepoch_loss = []
         self.EnvPara = EnvPara
 
-        if self.task == "inference_SingleBSLoc":
-            sd = torch.load(self.EnvPara["load_pretrained_mdl_path"], map_location=self.EnvPara["device"])
-            self.channel_fdmdl.load_state_dict(sd, strict=False)
-
 
     def forward(self, x, y):
 
         if self.task == "no_pretrain":
             loss = self.channel_fdmdl(x, y, task='no_pretrain')
-
         elif self.task == "pretrain_mpg":
             loss = self.channel_fdmdl(x, y, task='pretrain_mpg', mask_patch=13)
+        elif  self.task == "pretrain_antenna":
+            loss = self.channel_fdmdl(x, y, task='pretrain_antenna', mask_antenna_number=8)
         elif self.task == "woFT_SingleBSLoc":
+            loss = self.channel_fdmdl(x, y, task = self.task)
+        elif self.task == "FT_SingleBSLoc":
             loss = self.channel_fdmdl(x, y, task = self.task)
         elif self.task == "inference_SingleBSLoc":
             res = self.channel_fdmdl(x, y, task = self.task)
+        
 
         return loss
     
@@ -60,6 +60,13 @@ class Wrapper(pl.LightningModule):
 
         loss = self.forward(x, labels)
 
+
+        # for name, param in self.channel_fdmdl.named_parameters():
+        #     if "pos_embed" in name or "cls_token" in name:
+        #         print(f"{name} 均值: {param.data.mean().item():.4f}, 梯度均值: {param.grad.mean().item() if param.grad is not None else 0:.4f}")
+        #         if torch.isnan(param).any():
+        #             print(f"NaN 出现在 {name}!")
+                    
         self.train_epoch_loss.append(loss.detach())
         self.log('train/loss', loss, prog_bar=True, sync_dist=True, on_step=False, on_epoch=True)
         return {'loss': loss}
@@ -90,7 +97,7 @@ class Wrapper(pl.LightningModule):
         self.valepoch_loss.clear()
 
     def configure_optimizers(self):
-        self.optim = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=2e-5)
+        self.optim = torch.optim.Adam(self.parameters(), lr=3e-5, weight_decay=1e-4)
         # self.schedule = torch.optim.lr_scheduler.CosineAnnealingLR(self.optim, T_max=3000, eta_min=0)
         self.schedule = torch.optim.lr_scheduler.OneCycleLR(self.optim, max_lr=1e-3, total_steps=15625000, pct_start=0.1, final_div_factor=1e2)
         # self.schedule = torch.optim.lr_scheduler.OneCycleLR(self.optim, max_lr=1e-3, total_steps=782*1000, pct_start=0.4, final_div_factor=1e1)
